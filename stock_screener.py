@@ -34,6 +34,17 @@ def _find_westock_script():
 
 WESTOCK_SCRIPT = _find_westock_script()
 
+# 交易所→过滤策略（大指数+前缀过滤，因为综指不支持成份股查询）
+EXCHANGE_CONFIG = {
+    "sh": {"index": "sh000300", "prefix": "sh6", "label": "上交所"},
+    "sz": {"index": "sz399905", "prefix": "sz",  "label": "深交所"},
+}
+
+EXCHANGE_NAMES = {
+    "sh": "上交所",
+    "sz": "深交所",
+}
+
 
 def run_westock(args_list, timeout=30):
     """执行 westock-data 命令并返回输出"""
@@ -286,9 +297,11 @@ def save_results_json(results, days, pattern_str, output_file):
 
 def main():
     parser = argparse.ArgumentParser(description="K线形态选股系统")
-    parser.add_argument("days", type=int, help="最近N个交易日（如60）")
+    parser.add_argument("days", type=int, help="最近N个交易日（如10）")
     parser.add_argument("pattern", type=str, help="K线形态（如：阳阳阳 / 阳阴阳阳）")
-    parser.add_argument("--index", type=str, default="sh000300", help="使用的指数（默认沪深300: sh000300）")
+    parser.add_argument("--exchange", type=str, default=None, choices=["sh", "sz"],
+                        help="交易所（sh=上交所, sz=深交所）")
+    parser.add_argument("--index", type=str, default=None, help="使用的指数代码（如 sh000300），与--exchange二选一")
     parser.add_argument("--workers", type=int, default=8, help="并发线程数（默认8）")
     parser.add_argument("--output", type=str, default="screen_result.json", help="结果输出文件")
     
@@ -305,18 +318,41 @@ def main():
         print(f"❌ 参数错误: 交易日数({args.days})不能少于形态长度({len(pattern)})")
         sys.exit(1)
     
-    print(f"\n🚀 K线形态选股系统启动")
-    print(f"   📅 时间范围: 最近 {args.days} 个交易日")
-    print(f"   🕯️  K线形态: {args.pattern}（{len(pattern)}根）")
-    print(f"   📈 股票池: {args.index}")
-    
-    # 获取股票列表
-    stock_list = get_stock_list_by_index(args.index)
+    # 解析交易所/指数参数
+    if args.exchange:
+        cfg = EXCHANGE_CONFIG[args.exchange]
+        pool_label = EXCHANGE_NAMES[args.exchange]
+        print(f"\n🚀 K线形态选股系统启动")
+        print(f"   📅 时间范围: 最近 {args.days} 个交易日")
+        print(f"   🕯️  K线形态: {args.pattern}（{len(pattern)}根）")
+        print(f"   📈 股票池: {pool_label}（指数: {cfg['index']}，前缀: {cfg['prefix']}）")
+        # 获取大指数成份股，再按交易所前缀过滤
+        raw_stocks = get_stock_list_by_index(cfg["index"])
+        stock_list = [s for s in raw_stocks if s["code"].startswith(cfg["prefix"])]
+        print(f"   📋 从 {len(raw_stocks)} 只成份股中筛选出 {len(stock_list)} 只{pool_label}股票")
+    elif args.index:
+        pool_label = args.index
+        print(f"\n🚀 K线形态选股系统启动")
+        print(f"   📅 时间范围: 最近 {args.days} 个交易日")
+        print(f"   🕯️  K线形态: {args.pattern}（{len(pattern)}根）")
+        print(f"   📈 股票池: {pool_label}")
+        stock_list = get_stock_list_by_index(args.index)
+    else:
+        pool_label = "上交所（默认）"
+        cfg = EXCHANGE_CONFIG["sh"]
+        print(f"\n🚀 K线形态选股系统启动")
+        print(f"   📅 时间范围: 最近 {args.days} 个交易日")
+        print(f"   🕯️  K线形态: {args.pattern}（{len(pattern)}根）")
+        print(f"   📈 股票池: {pool_label}（指数: {cfg['index']}）")
+        raw_stocks = get_stock_list_by_index(cfg["index"])
+        stock_list = [s for s in raw_stocks if s["code"].startswith(cfg["prefix"])]
+        print(f"   📋 从 {len(raw_stocks)} 只成份股中筛选出 {len(stock_list)} 只{pool_label}股票")
+
     if not stock_list:
         print("❌ 获取股票列表失败")
         sys.exit(1)
-    
-    print(f"   📋 股票池大小: {len(stock_list)} 只\n")
+
+    print(f"")
     
     # 执行选股
     start_time = time.time()

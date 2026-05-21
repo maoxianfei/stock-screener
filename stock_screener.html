@@ -194,6 +194,13 @@
     select.param-input option:disabled {
       color: var(--text3);
     }
+    select.param-input optgroup {
+      color: var(--accent);
+      font-weight: 700;
+      font-size: 12px;
+      font-style: normal;
+      background: rgba(99,179,237,0.08);
+    }
 
     /* 形态预览 */
     .pattern-preview {
@@ -293,6 +300,12 @@
     .quick-tag:hover {
       background: rgba(99,179,237,0.2);
       border-color: var(--accent);
+    }
+    .quick-tag em {
+      font-style: normal;
+      font-size: 11px;
+      color: var(--text3);
+      margin-left: 2px;
     }
     .quick-tag.active {
       background: rgba(99,179,237,0.25);
@@ -598,21 +611,18 @@
       <!-- 参数一：交易日数 -->
       <div class="param-group">
         <div class="param-label"><span class="dot"></span>交易日范围</div>
-        <input type="number" id="input-days" class="param-input" value="60" min="5" max="250" placeholder="如：60" />
+        <input type="number" id="input-days" class="param-input" value="10" min="5" max="250" placeholder="如：10" />
         <div style="font-size:12px;color:var(--text3);margin-top:4px">最近多少个交易日内出现该形态</div>
       </div>
 
       <!-- 参数二：形态输入 -->
       <div class="param-group">
         <div class="param-label"><span class="dot" style="background:var(--accent2)"></span>K线形态</div>
-        <input type="text" id="input-pattern" class="param-input" value="阳阳阳" placeholder="如：阳阴阳阳" />
+        <input type="text" id="input-pattern" class="param-input" value="阴阳阴阴阴阳" placeholder="如：阳阴阳阴阴阴阳" />
         <div class="quick-patterns">
-          <span class="quick-tag active" onclick="setPattern('阳阳阳')">阳阳阳</span>
-          <span class="quick-tag" onclick="setPattern('阳阳阳阳')">阳阳阳阳</span>
-          <span class="quick-tag" onclick="setPattern('阴阳阳')">阴阳阳</span>
-          <span class="quick-tag" onclick="setPattern('阳阴阳阳')">阳阴阳阳</span>
-          <span class="quick-tag" onclick="setPattern('阴阴阳')">阴阴阳</span>
-          <span class="quick-tag" onclick="setPattern('阳阴阴阳阳')">阳阴阴阳阳</span>
+          <span class="quick-tag active" onclick="setPattern('阴阳阴阴阴阳')" title="水雷屯-大底部">阴阳阴阴阴阳 <em>（水雷屯-大底部）</em></span>
+          <span class="quick-tag" onclick="setPattern('阳阴阳阴阴阴阳')" title="火地晋-交易拐点">阳阴阳阴阴阴阳 <em>（火地晋-交易拐点）</em></span>
+          <span class="quick-tag" onclick="setPattern('阴阳阴阴阴阴阳')" title="自用">阴阳阴阴阴阴阳 <em>（自用）</em></span>
         </div>
       </div>
 
@@ -620,13 +630,14 @@
       <div class="param-group">
         <div class="param-label"><span class="dot" style="background:#b794f4"></span>股票池</div>
         <select id="input-index" class="param-input">
-          <option value="sh000300">沪深300</option>
-          <option value="sh000016">上证50</option>
-          <option value="sz399006" disabled>创业板指（暂不可用）</option>
-          <option value="sz399905">中证500</option>
-          <option value="sh000852" disabled>中证1000（暂不可用）</option>
+          <optgroup label="── 上交所 (SSE) ──">
+            <option value="sh" selected>上交所（上证综指）</option>
+          </optgroup>
+          <optgroup label="── 深交所 (SZSE) ──">
+            <option value="sz">深交所（深证综指）</option>
+          </optgroup>
         </select>
-        <div style="font-size:12px;color:var(--text3);margin-top:4px">从指数成份股中筛选</div>
+        <div style="font-size:12px;color:var(--text3);margin-top:4px">按交易所筛选该所全部上市股票</div>
       </div>
     </div>
 
@@ -723,7 +734,7 @@
   <!-- 底部说明 -->
   <div class="footer-note">
     <span class="icon">⚠️</span>
-    <p>本工具仅供技术形态学习和研究使用，不构成任何投资建议。股市有风险，投资需谨慎。实际运行需要 Python 3.8+ 环境，并在终端执行：<code style="background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:4px">python stock_screener.py 60 阳阳阳 --index sh000300</code></p>
+    <p>本工具仅供技术形态学习和研究使用，不构成任何投资建议。股市有风险，投资需谨慎。实际运行需要 Python 3.8+ 环境，并在终端执行：<code style="background:rgba(255,255,255,0.08);padding:2px 6px;border-radius:4px">python stock_screener.py 10 阴阳阴阴阴阳 --exchange sh</code></p>
   </div>
 </div>
 
@@ -826,7 +837,7 @@
   async function runScreener() {
     const days = parseInt(document.getElementById('input-days').value);
     const pattern = document.getElementById('input-pattern').value.trim();
-    const index = document.getElementById('input-index').value;
+    const exchange = document.getElementById('input-index').value;
 
     if (!days || days < 1) { alert('请输入有效的交易日数'); return; }
     if (!pattern || !/^[阳阴]+$/.test(pattern)) { alert('形态只能包含"阳"或"阴"字'); return; }
@@ -844,9 +855,9 @@
     lastLogCount = 0;
     startTime = Date.now();
 
-    const indexNames = { 'sh000300': '沪深300', 'sh000016': '上证50', 'sz399006': '创业板指', 'sz399905': '中证500', 'sh000852': '中证1000' };
+    const exchangeNames = { 'sh': '上交所', 'sz': '深交所' };
     addLog(`启动选股任务...`, 'info');
-    addLog(`参数：最近${days}个交易日 | 形态：${pattern} | 股票池：${indexNames[index]}`, 'info');
+    addLog(`参数：最近${days}个交易日 | 形态：${pattern} | 股票池：${exchangeNames[exchange] || exchange}`, 'info');
 
     const hasBackend = await checkBackend();
     if (!hasBackend) {
@@ -860,11 +871,11 @@
     // 真实模式：调用后端API
     addLog('已连接后端服务，开始选股...', 'info');
     try {
-      const resp = await fetch(`/api/screen?days=${days}&pattern=${encodeURIComponent(pattern)}&index=${index}`);
+      const resp = await fetch(`/api/screen?days=${days}&pattern=${encodeURIComponent(pattern)}&exchange=${exchange}`);
       const data = await resp.json();
       if (data.error) { addLog('后端错误: ' + data.error, 'warn'); resetButton(); return; }
       addLog('后端任务已启动，轮询进度...', 'info');
-      pollProgress(days, pattern, index);
+      pollProgress(days, pattern, exchange);
     } catch(e) {
       addLog('连接后端失败: ' + e.message, 'warn');
       resetButton();
@@ -877,7 +888,7 @@
   }
 
   // 轮询后端进度
-  function pollProgress(days, pattern, index) {
+  function pollProgress(days, pattern, exchange) {
     clearInterval(pollTimer);
     pollTimer = setInterval(async () => {
       try {
@@ -913,16 +924,16 @@
           document.getElementById('progress-title-text').textContent = '✅ 扫描完成';
           document.getElementById('btn-run').disabled = false;
           allResults = (s.results || []).map(r => ({ ...r, pattern }));
-          showResults(allResults, days, pattern, index);
+          showResults(allResults, days, pattern, exchange);
         }
       } catch(e) { /* 忽略轮询错误 */ }
     }, 600);
   }
 
   // ===================== 展示结果 =====================
-  function showResults(results, days, pattern, index) {
-    const indexNames = { 'sh000300': '沪深300', 'sh000016': '上证50', 'sz399006': '创业板指', 'sz399905': '中证500', 'sh000852': '中证1000' };
-    document.getElementById('meta-params').textContent = `最近${days}日 · ${pattern} · ${indexNames[index]}`;
+  function showResults(results, days, pattern, exchange) {
+    const exchangeNames = { 'sh': '上交所', 'sz': '深交所' };
+    document.getElementById('meta-params').textContent = `最近${days}日 · ${pattern} · ${exchangeNames[exchange] || exchange}`;
     document.getElementById('meta-time').textContent = new Date().toLocaleString();
     document.getElementById('meta-count').textContent = `共 ${results.length} 只`;
 

@@ -32,6 +32,20 @@ def _find_westock_script():
 WESTOCK_SCRIPT = _find_westock_script()
 PORT = 8888
 
+# 交易所→过滤策略
+# 因为上证综指/sh000001和深证综指/sz399106不支持成份股查询，
+# 改用覆盖面大的指数获取股票列表后，再按代码前缀过滤
+EXCHANGE_CONFIG = {
+    "sh": {"index": "sh000300", "prefix": "sh6", "label": "上交所"},    # 沪深300 → 过滤sh6
+    "sz": {"index": "sz399905", "prefix": "sz",  "label": "深交所"},    # 中证500 → 过滤sz
+}
+
+# 交易所中文名
+EXCHANGE_NAMES = {
+    "sh": "上交所",
+    "sz": "深交所",
+}
+
 # 全局任务状态
 task_state = {
     "running": False,
@@ -102,6 +116,26 @@ def get_index_stocks(index_code):
     return stocks
 
 
+def get_stocks_for_exchange(exchange_key):
+    """按交易所获取股票列表（大指数 + 代码前缀过滤）"""
+    cfg = EXCHANGE_CONFIG[exchange_key]
+    index_code = cfg["index"]
+    prefix = cfg["prefix"]
+    all_stocks = get_index_stocks(index_code)
+    # 按代码前缀过滤
+    filtered = [s for s in all_stocks if s["code"].startswith(prefix)]
+    return filtered
+
+
+def resolve_index_from_params(exchange=None, index=None):
+    """根据 exchange 或 index 参数，解析出实际指数代码和显示名"""
+    if exchange and exchange in EXCHANGE_CONFIG:
+        return exchange, EXCHANGE_NAMES[exchange]
+    if index:
+        return index, index
+    return "sh", "上交所"  # 默认
+
+
 def screen_one(stock, pattern, days):
     code, name = stock["code"], stock["name"]
     # 多取一些数据以确保能获取到结束日后5个交易日
@@ -133,7 +167,7 @@ def screen_one(stock, pattern, days):
     return None
 
 
-def run_screening(days, pattern_str, index_code, workers=10):
+def run_screening(days, pattern_str, index_code_or_exchange, workers=10, exchange=None):
     global task_state
     task_state = {
         "running": True,
@@ -150,8 +184,17 @@ def run_screening(days, pattern_str, index_code, workers=10):
         task_state["logs"].append(msg)
 
     try:
-        log("正在获取 %s 成份股..." % index_code)
-        stocks = get_index_stocks(index_code)
+        # 按交易所过滤 or 直接按指数
+        if exchange and exchange in EXCHANGE_CONFIG:
+            cfg = EXCHANGE_CONFIG[exchange]
+            log("正在获取%s股票列表...（指数: %s，按 %s 前缀过滤）" % (cfg["label"], cfg["index"], cfg["prefix"]))
+            raw_stocks = get_index_stocks(cfg["index"])
+            stocks = [s for s in raw_stocks if s["code"].startswith(cfg["prefix"])]
+            log("从 %d 只成份股中筛选出 %d 只%s股票" % (len(raw_stocks), len(stocks), cfg["label"]))
+        else:
+            log("正在获取 %s 成份股..." % index_code_or_exchange)
+            stocks = get_index_stocks(index_code_or_exchange)
+
         if not stocks:
             task_state["error"] = "获取成份股失败"
             task_state["done"] = True
@@ -200,7 +243,8 @@ class ScreenerHandler(http.server.BaseHTTPRequestHandler):
             try:
                 days = int(query.get("days", [60])[0])
                 pattern = query.get("pattern", ["阳阳阳"])[0]
-                index = query.get("index", ["sh000300"])[0]
+                exchange = query.get("exchange", [None])[0]
+                index = query.get("index", [None])[0]
                 workers = int(query.get("workers", [10])[0])
             except Exception:
                 self.json_response({"error": "参数格式错误"})
@@ -210,9 +254,11 @@ class ScreenerHandler(http.server.BaseHTTPRequestHandler):
                 self.json_response({"error": "正在运行中，请等待完成"})
                 return
 
-            t = threading.Thread(target=run_screening, args=(days, pattern, index, workers), daemon=True)
+            index_code, index_label = resolve_index_from_params(exchange=exchange, index=index)
+
+            t = threading.Thread(target=run_screening, args=(days, pattern, index_label, workers), kwargs={"exchange": exchange}, daemon=True)
             t.start()
-            self.json_response({"status": "started", "days": days, "pattern": pattern, "index": index})
+            self.json_response({"status": "started", "days": days, "pattern": pattern, "index": index_label, "exchange": exchange})
 
         else:
             self.send_response(404)

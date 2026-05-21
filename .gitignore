@@ -21,3 +21,9 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# System artifacts
+NVIDIA Corporation/
+
+# Personal notes (do not commit)
+股市行情比对
