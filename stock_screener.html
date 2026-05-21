@@ -947,25 +947,25 @@
       if (Math.random() < 0.18 && matched.length < demoStocks.length) {
         const s = demoStocks[matched.length];
         const today = new Date('2026-05-20');
-        const endDate = new Date(today.getTime() - Math.floor(Math.random() * days * 0.6) * 86400000);
+        // 部分股票的结束日就是最新日期（无后续数据）
+        const isLatest = Math.random() < 0.3;
+        const endDate = isLatest ? new Date(today) : new Date(today.getTime() - Math.floor(Math.random() * days * 0.6) * 86400000);
         const startDate = new Date(endDate.getTime() - (pattern.length - 1) * 86400000);
         const fmt = d => d.toISOString().split('T')[0];
 
-        // 模拟结束后5个交易日的K线数据
-        const postKlines = [];
-        let basePrice = 10 + Math.random() * 100;
-        for (let pi = 0; pi < 5; pi++) {
-          const kDate = new Date(endDate.getTime() + (pi + 1) * 86400000);
-          // 随机生成涨跌幅
-          const changePct = (Math.random() - 0.45) * 5; // 略偏涨
-          const openPrice = parseFloat((basePrice).toFixed(2));
-          basePrice = parseFloat((basePrice * (1 + changePct / 100)).toFixed(2));
-          postKlines.push({
-            date: fmt(kDate),
-            open: openPrice,
-            close: basePrice
-          });
+        let postKlines = [];
+        if (!isLatest) {
+          // 非最新日期：模拟结束后5个交易日的K线数据
+          let basePrice = 10 + Math.random() * 100;
+          for (let pi = 0; pi < 5; pi++) {
+            const kDate = new Date(endDate.getTime() + (pi + 1) * 86400000);
+            const changePct = (Math.random() - 0.45) * 5;
+            const openPrice = parseFloat((basePrice).toFixed(2));
+            basePrice = parseFloat((basePrice * (1 + changePct / 100)).toFixed(2));
+            postKlines.push({ date: fmt(kDate), open: openPrice, close: basePrice });
+          }
         }
+        // isLatest 时 postKlines 保持空数组
 
         matched.push({ code: s.code, name: s.name, match_end_date: fmt(endDate), match_start_date: fmt(startDate), pattern, post_klines: postKlines });
         addLog(`命中: ${s.name}(${s.code})  ${fmt(startDate)} ~ ${fmt(endDate)}`, 'success');
@@ -1012,7 +1012,7 @@
     }
     empty.style.display = 'none';
 
-    // 生成迷你K线HTML：优先用后端真实post_klines数据，否则用pattern字符串模拟
+    // 生成迷你K线HTML：用后端真实post_klines数据；无后续数据则显示"-"
     function buildPostKlineHtml(r) {
       if (r.post_klines && r.post_klines.length > 0) {
         // 真实数据：根据 close >= open 判断阳/阴
@@ -1023,20 +1023,15 @@
           return `<div class="mini-candle ${isYang ? 'yang' : 'yin'}" style="height:${h}px" title="${k.date}\n开:${k.open} 收:${k.close} (${isYang ? '+' : ''}${pctChange}%)"></div>`;
         }).join('');
       } else {
-        // 演示模式：基于pattern字符串生成模拟后续K线
-        return r.pattern.split('').map((ch, idx) => {
-          const isYang = ch === '阳';
-          const h = 12 + Math.random() * 16;
-          return `<div class="mini-candle ${isYang ? 'yang' : 'yin'}" style="height:${Math.round(h)}px"></div>`;
-        }).join('');
+        // 结束日为最新交易日，无后续数据
+        return `<span style="color:var(--text3);font-size:13px">-</span>`;
       }
     }
 
     tbody.innerHTML = results.map((r, i) => {
       const postKlineHtml = buildPostKlineHtml(r);
-      const postCount = (r.post_klines && r.post_klines.length > 0)
-        ? r.post_klines.length + '日'
-        : (r.pattern ? r.pattern.length + '日(演示)' : '-');
+      const hasPost = (r.post_klines && r.post_klines.length > 0);
+      const postTip = hasPost ? `结束后${r.post_klines.length}日的K线走势` : '结束日为最新日期，暂无后续数据';
 
       return `
         <tr>
@@ -1045,7 +1040,7 @@
           <td class="td-name">${r.name}</td>
           <td class="td-date">${r.match_start_date}</td>
           <td class="td-date">${r.match_end_date}</td>
-          <td><div class="mini-chart" title="形态结束日之后${postCount}的K线走势">${postKlineHtml}</div></td>
+          <td><div class="mini-chart" title="${postTip}">${postKlineHtml}</div></td>
         </tr>
       `;
     }).join('');
@@ -1067,7 +1062,7 @@
     const header = '序号,股票代码,股票名称,形态起始日期,形态结束日期,结束后K线数\n';
     const rows = allResults.map((r, i) => {
       const postCount = (r.post_klines && r.post_klines.length > 0)
-        ? r.post_klines.length + '日' : (r.pattern || '');
+        ? r.post_klines.length + '日' : '无(最新日)';
       return `${i+1},${r.code},${r.name},${r.match_start_date},${r.match_end_date},${postCount}`;
     }).join('\n');
     const blob = new Blob(['\uFEFF' + header + rows], { type: 'text/csv;charset=utf-8' });
@@ -1093,11 +1088,11 @@
       { code: 'sh600036', name: '招商银行', match_start_date: '2026-05-10', match_end_date: '2026-05-14', pattern: '阳阳阳',
         post_klines: [{date:'2026-05-15',open:36.8,close:37.2},{date:'2026-05-16',open:37.0,close:36.5},{date:'2026-05-19',open:36.4,close:37.0},{date:'2026-05-20',open:36.9,close:38.1}] },
       { code: 'sz002714', name: '牧原股份', match_start_date: '2026-05-16', match_end_date: '2026-05-20', pattern: '阳阳阳',
-        post_klines: [{date:'2026-05-21',open:45.2,close:46.0},{date:'2026-05-22',open:45.8,close:44.5},{date:'2026-05-23',open:44.3,close:45.5},{date:'2026-05-26',open:45.3,close:46.8},{date:'2026-05-27',open:46.7,close:47.2}] },
+        post_klines: [] },  // 结束日=最新日期，无后续数据
       { code: 'sh688981', name: '中芯国际', match_start_date: '2026-05-09', match_end_date: '2026-05-13', pattern: '阳阳阳',
         post_klines: [{date:'2026-05-14',open:98.5,close:100.2},{date:'2026-05-15',open:99.8,close:97.6},{date:'2026-05-16',open:97.2,close:99.0},{date:'2026-05-19',open:98.8,close:101.5}] },
-      { code: 'sz300059', name: '东方财富', match_start_date: '2026-05-16', match_end_date: '2026-05-20', pattern: '阳阳阳',
-        post_klines: [{date:'2026-05-21',open:25.8,close:26.5},{date:'2026-05-22',open:26.3,close:25.9},{date:'2026-05-23',open:25.7,close:27.0},{date:'2026-05-26',open:26.8,close:27.8},{date:'2026-05-27',open:27.7,close:28.2}] },
+      { code: 'sz300059', name: '东方财富', match_start_date: '2026-05-18', match_end_date: '2026-05-20', pattern: '阳阳阳',
+        post_klines: [] },  // 结束日=最新日期，无后续数据
     ];
 
     allResults = demo;
