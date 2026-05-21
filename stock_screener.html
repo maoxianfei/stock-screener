@@ -943,6 +943,11 @@
     document.getElementById('results-section').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
+  function cleanCode(code) {
+    // 去掉 sh/sz/bj 等交易所前缀，只保留数字
+    return code.replace(/^(sh|sz|bj)/, '');
+  }
+
   function renderTable(results) {
     const tbody = document.getElementById('result-tbody');
     const empty = document.getElementById('empty-state');
@@ -978,7 +983,7 @@
       return `
         <tr>
           <td style="color:var(--text3)">${i + 1}</td>
-          <td><span class="td-code">${r.code}</span></td>
+          <td><span class="td-code">${cleanCode(r.code)}</span></td>
           <td class="td-name">${r.name}</td>
           <td class="td-date">${r.match_start_date}</td>
           <td class="td-date">${r.match_end_date}</td>
@@ -992,7 +997,7 @@
   function filterTable() {
     const q = document.getElementById('search-input').value.toLowerCase();
     const filtered = allResults.filter(r =>
-      r.code.toLowerCase().includes(q) || r.name.toLowerCase().includes(q)
+      cleanCode(r.code).toLowerCase().includes(q) || r.name.toLowerCase().includes(q)
     );
     renderTable(filtered);
     document.getElementById('meta-count').textContent = `共 ${filtered.length} 只`;
@@ -1005,7 +1010,7 @@
     const rows = allResults.map((r, i) => {
       const postCount = (r.post_klines && r.post_klines.length > 0)
         ? r.post_klines.length + '日' : '无(最新日)';
-      return `${i+1},${r.code},${r.name},${r.match_start_date},${r.match_end_date},${postCount}`;
+      return `${i+1},${cleanCode(r.code)},${r.name},${r.match_start_date},${r.match_end_date},${postCount}`;
     }).join('\n');
     const blob = new Blob(['\uFEFF' + header + rows], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
