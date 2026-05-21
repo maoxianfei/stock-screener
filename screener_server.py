@@ -104,13 +104,30 @@ def get_index_stocks(index_code):
 
 def screen_one(stock, pattern, days):
     code, name = stock["code"], stock["name"]
-    out = run_westock(["kline", code, "--period", "day", "--limit", str(days + 5), "--fq", "qfq"])
+    # 多取一些数据以确保能获取到结束日后5个交易日
+    out = run_westock(["kline", code, "--period", "day", "--limit", str(days + 15), "--fq", "qfq"])
     klines = parse_kline_table(out)
     if not klines:
         return None
     matched, s, e = check_pattern(klines, pattern, days)
     if matched:
-        return {"code": code, "name": name, "match_start_date": s, "match_end_date": e}
+        # 找到匹配结束日在klines中的索引位置
+        end_idx = None
+        for i, k in enumerate(klines):
+            if k["date"] == e:
+                end_idx = i
+                break
+        # 提取结束后5个交易日的K线数据
+        post_klines = []
+        if end_idx is not None:
+            post_klines = klines[end_idx + 1 : end_idx + 6]
+        return {
+            "code": code,
+            "name": name,
+            "match_start_date": s,
+            "match_end_date": e,
+            "post_klines": post_klines
+        }
     return None
 
 
