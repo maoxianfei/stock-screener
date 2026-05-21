@@ -266,21 +266,6 @@
       transform: none;
     }
 
-    .btn-demo {
-      background: rgba(246,173,85,0.1);
-      border: 1px solid rgba(246,173,85,0.3);
-      border-radius: 12px;
-      padding: 14px 24px;
-      color: var(--accent2);
-      font-size: 14px;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .btn-demo:hover {
-      background: rgba(246,173,85,0.15);
-      box-shadow: 0 0 20px rgba(246,173,85,0.2);
-    }
-
     /* 快捷形态标签 */
     .quick-patterns {
       display: flex;
@@ -652,11 +637,8 @@
         <span>🔍</span>
         <span>开始选股</span>
       </button>
-      <button class="btn-demo" onclick="loadDemoData()">
-        📋 加载演示数据
-      </button>
       <div style="font-size:13px;color:var(--text3)">
-        实际运行需要 Python 环境，演示数据可直接体验界面
+        请先启动后端服务：python screener_server.py
       </div>
     </div>
   </div>
@@ -820,7 +802,7 @@
     box.scrollTop = box.scrollHeight;
   }
 
-  // ===================== 主选股逻辑（真实API + 演示双模式） =====================
+  // ===================== 主选股逻辑 =====================
   let allResults = [];
   let startTime = 0;
   let pollTimer = null;
@@ -860,24 +842,31 @@
     addLog(`参数：最近${days}个交易日 | 形态：${pattern} | 股票池：${indexNames[index]}`, 'info');
 
     const hasBackend = await checkBackend();
-    if (hasBackend) {
-      // 真实模式：调用后端API
-      addLog('已连接后端服务，开始真实选股...', 'info');
-      try {
-        const resp = await fetch(`/api/screen?days=${days}&pattern=${encodeURIComponent(pattern)}&index=${index}`);
-        const data = await resp.json();
-        if (data.error) { addLog('后端错误: ' + data.error, 'warn'); fallbackDemo(days, pattern, index); return; }
-        addLog('后端任务已启动，轮询进度...', 'info');
-        pollProgress(days, pattern, index);
-      } catch(e) {
-        addLog('连接后端失败，切换演示模式', 'warn');
-        simulateScreening(days, pattern, index);
-      }
-    } else {
-      // 演示模式
-      addLog('后端未启动，进入演示模式（运行 screener_server.py 可启用真实选股）', 'warn');
-      simulateScreening(days, pattern, index);
+    if (!hasBackend) {
+      addLog('错误：无法连接到后端服务，请先运行 python screener_server.py', 'warn');
+      document.getElementById('spinner').style.display = 'none';
+      document.getElementById('progress-title-text').textContent = '❌ 后端未启动';
+      document.getElementById('btn-run').disabled = false;
+      return;
     }
+
+    // 真实模式：调用后端API
+    addLog('已连接后端服务，开始选股...', 'info');
+    try {
+      const resp = await fetch(`/api/screen?days=${days}&pattern=${encodeURIComponent(pattern)}&index=${index}`);
+      const data = await resp.json();
+      if (data.error) { addLog('后端错误: ' + data.error, 'warn'); resetButton(); return; }
+      addLog('后端任务已启动，轮询进度...', 'info');
+      pollProgress(days, pattern, index);
+    } catch(e) {
+      addLog('连接后端失败: ' + e.message, 'warn');
+      resetButton();
+    }
+  }
+
+  function resetButton() {
+    document.getElementById('spinner').style.display = 'none';
+    document.getElementById('btn-run').disabled = false;
   }
 
   // 轮询后端进度
@@ -921,71 +910,6 @@
         }
       } catch(e) { /* 忽略轮询错误 */ }
     }, 600);
-  }
-
-  function simulateScreening(days, pattern, index) {
-    const totalStocks = { 'sh000300': 300, 'sh000016': 50, 'sz399006': 100, 'sz399905': 500, 'sh000852': 1000 }[index] || 300;
-    document.getElementById('stat-total').textContent = totalStocks;
-    addLog(`正在获取 ${index} 成份股列表...`);
-    let scanned = 0;
-    const matched = [];
-    const demoStocks = [
-      { code: 'sh600519', name: '贵州茅台' }, { code: 'sh601318', name: '中国平安' },
-      { code: 'sz000858', name: '五粮液' }, { code: 'sz300750', name: '宁德时代' },
-      { code: 'sh600036', name: '招商银行' }, { code: 'sh601166', name: '兴业银行' },
-      { code: 'sz000651', name: '格力电器' }, { code: 'sz000333', name: '美的集团' },
-      { code: 'sh600900', name: '长江电力' }, { code: 'sh600276', name: '恒瑞医药' },
-      { code: 'sz002714', name: '牧原股份' }, { code: 'sh601888', name: '中国中免' },
-      { code: 'sz002475', name: '立讯精密' }, { code: 'sh688981', name: '中芯国际' },
-      { code: 'sz300059', name: '东方财富' }, { code: 'sh600031', name: '三一重工' },
-      { code: 'sh688012', name: '中微公司' }, { code: 'sh601012', name: '隆基绿能' },
-      { code: 'sh603019', name: '中科曙光' }, { code: 'sh688256', name: '寒武纪' },
-    ];
-    const interval = setInterval(() => {
-      const batch = Math.min(Math.ceil(totalStocks / 40), totalStocks - scanned);
-      scanned = Math.min(scanned + batch, totalStocks);
-      if (Math.random() < 0.18 && matched.length < demoStocks.length) {
-        const s = demoStocks[matched.length];
-        const today = new Date('2026-05-20');
-        // 部分股票的结束日就是最新日期（无后续数据）
-        const isLatest = Math.random() < 0.3;
-        const endDate = isLatest ? new Date(today) : new Date(today.getTime() - Math.floor(Math.random() * days * 0.6) * 86400000);
-        const startDate = new Date(endDate.getTime() - (pattern.length - 1) * 86400000);
-        const fmt = d => d.toISOString().split('T')[0];
-
-        let postKlines = [];
-        if (!isLatest) {
-          // 非最新日期：模拟结束后5个交易日的K线数据
-          let basePrice = 10 + Math.random() * 100;
-          for (let pi = 0; pi < 5; pi++) {
-            const kDate = new Date(endDate.getTime() + (pi + 1) * 86400000);
-            const changePct = (Math.random() - 0.45) * 5;
-            const openPrice = parseFloat((basePrice).toFixed(2));
-            basePrice = parseFloat((basePrice * (1 + changePct / 100)).toFixed(2));
-            postKlines.push({ date: fmt(kDate), open: openPrice, close: basePrice });
-          }
-        }
-        // isLatest 时 postKlines 保持空数组
-
-        matched.push({ code: s.code, name: s.name, match_end_date: fmt(endDate), match_start_date: fmt(startDate), pattern, post_klines: postKlines });
-        addLog(`命中: ${s.name}(${s.code})  ${fmt(startDate)} ~ ${fmt(endDate)}`, 'success');
-      }
-      const pct = Math.round(scanned / totalStocks * 100);
-      document.getElementById('progress-bar').style.width = pct + '%';
-      document.getElementById('progress-pct').textContent = pct + '%';
-      document.getElementById('stat-scanned').textContent = scanned;
-      document.getElementById('stat-matched').textContent = matched.length;
-      document.getElementById('stat-elapsed').textContent = ((Date.now() - startTime)/1000).toFixed(1) + 's';
-      if (scanned >= totalStocks) {
-        clearInterval(interval);
-        addLog(`扫描完成！共命中 ${matched.length} 只股票（演示数据）`, 'success');
-        document.getElementById('spinner').style.display = 'none';
-        document.getElementById('progress-title-text').textContent = '✅ 扫描完成（演示）';
-        document.getElementById('btn-run').disabled = false;
-        allResults = matched;
-        showResults(matched, days, pattern, index);
-      }
-    }, 80);
   }
 
   // ===================== 展示结果 =====================
@@ -1074,36 +998,6 @@
     URL.revokeObjectURL(url);
   }
 
-  // ===================== 演示数据 =====================
-  function loadDemoData() {
-    const demo = [
-      { code: 'sh600519', name: '贵州茅台', match_start_date: '2026-05-16', match_end_date: '2026-05-20', pattern: '阳阳阳',
-        post_klines: [{date:'2026-05-21',open:1680,close:1705},{date:'2026-05-22',open:1702,close:1690},{date:'2026-05-23',open:1688,close:1710},{date:'2026-05-26',open:1708,close:1720},{date:'2026-05-27',open:1721,close:1735}] },
-      { code: 'sz000858', name: '五粮液', match_start_date: '2026-05-15', match_end_date: '2026-05-19', pattern: '阳阳阳',
-        post_klines: [{date:'2026-05-20',open:145.5,close:148.2},{date:'2026-05-21',open:147.8,close:146.3},{date:'2026-05-22',open:145.9,close:149.5},{date:'2026-05-23',open:149.0,close:151.0},{date:'2026-05-26',open:150.5,close:148.8}] },
-      { code: 'sh601318', name: '中国平安', match_start_date: '2026-05-16', match_end_date: '2026-05-20', pattern: '阳阳阳',
-        post_klines: [{date:'2026-05-21',open:56.2,close:57.1},{date:'2026-05-22',open:57.0,close:56.5},{date:'2026-05-23',open:56.4,close:57.8},{date:'2026-05-26',open:57.6,close:58.2},{date:'2026-05-27',open:58.0,close:57.4}] },
-      { code: 'sz300750', name: '宁德时代', match_start_date: '2026-05-12', match_end_date: '2026-05-16', pattern: '阳阳阳',
-        post_klines: [{date:'2026-05-19',open:215,close:210},{date:'2026-05-20',open:208,close:212},{date:'2026-05-21',open:211,close:218},{date:'2026-05-22',open:217,close:220},{date:'2026-05-23',open:219,close:222}] },
-      { code: 'sh600036', name: '招商银行', match_start_date: '2026-05-10', match_end_date: '2026-05-14', pattern: '阳阳阳',
-        post_klines: [{date:'2026-05-15',open:36.8,close:37.2},{date:'2026-05-16',open:37.0,close:36.5},{date:'2026-05-19',open:36.4,close:37.0},{date:'2026-05-20',open:36.9,close:38.1}] },
-      { code: 'sz002714', name: '牧原股份', match_start_date: '2026-05-16', match_end_date: '2026-05-20', pattern: '阳阳阳',
-        post_klines: [] },  // 结束日=最新日期，无后续数据
-      { code: 'sh688981', name: '中芯国际', match_start_date: '2026-05-09', match_end_date: '2026-05-13', pattern: '阳阳阳',
-        post_klines: [{date:'2026-05-14',open:98.5,close:100.2},{date:'2026-05-15',open:99.8,close:97.6},{date:'2026-05-16',open:97.2,close:99.0},{date:'2026-05-19',open:98.8,close:101.5}] },
-      { code: 'sz300059', name: '东方财富', match_start_date: '2026-05-18', match_end_date: '2026-05-20', pattern: '阳阳阳',
-        post_klines: [] },  // 结束日=最新日期，无后续数据
-    ];
-
-    allResults = demo;
-    document.getElementById('progress-section').style.display = 'none';
-    document.getElementById('results-section').style.display = 'block';
-    document.getElementById('meta-params').textContent = '最近60日 · 阳阳阳 · 沪深300（演示数据）';
-    document.getElementById('meta-time').textContent = new Date().toLocaleString();
-    document.getElementById('meta-count').textContent = `共 ${demo.length} 只`;
-    renderTable(demo);
-    document.getElementById('results-section').scrollIntoView({ behavior: 'smooth' });
-  }
 </script>
 </body>
 </html>
