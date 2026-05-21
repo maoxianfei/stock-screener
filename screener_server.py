@@ -112,15 +112,17 @@ def screen_one(stock, pattern, days):
     matched, s, e = check_pattern(klines, pattern, days)
     if matched:
         # 找到匹配结束日在klines中的索引位置
+        # 注意：westock-data返回的klines是从新到旧排列的（[0]=最新日期）
         end_idx = None
         for i, k in enumerate(klines):
             if k["date"] == e:
                 end_idx = i
                 break
         # 提取结束后5个交易日的K线数据
+        # klines中end_idx之前（索引更小）的条目才是结束日之后的日期
         post_klines = []
         if end_idx is not None:
-            post_klines = klines[end_idx + 1 : end_idx + 6]
+            post_klines = list(reversed(klines[max(0, end_idx - 5):end_idx]))
         return {
             "code": code,
             "name": name,
