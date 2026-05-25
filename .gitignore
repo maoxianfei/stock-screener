@@ -9,6 +9,7 @@ venv/
 *.egg-info/
 
 # Output files
+output/
 screen_result.json
 
 # WorkBuddy internal (不要上传)
